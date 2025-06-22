@@ -355,6 +355,22 @@ class CLIP(nn.Module):
 
         return x
 
+    def encode_text_year(self,text_onehot):
+        x=text_onehot@self.token_embedding.weight[271:281]
+        x=torch.cat((torch.unsqueeze(self.token_embedding.weight[49406,:],0),x,torch.unsqueeze(self.token_embedding.weight[49407,:],0),self.token_embedding.weight[0,:].repeat(71,1)))#6 + 71
+        x=torch.unsqueeze(x,0)
+        
+        
+        x = x + self.positional_embedding.type(self.dtype)
+        x = x.permute(1, 0, 2)  # NLD -> LND
+        x = self.transformer(x)
+        x = x.permute(1, 0, 2)  # LND -> NLD
+        x = self.ln_final(x).type(self.dtype)
+
+        print("CLIP output",x.shape)
+        x=x[:,5,:]@self.text_projection#0,1,2,3,4,5 (eof token)
+        return x
+    
     def forward(self, image, text):
         image_features = self.encode_image(image)
         text_features = self.encode_text(text)
