@@ -371,6 +371,35 @@ class CLIP(nn.Module):
         x=x[:,5,:]@self.text_projection#0,1,2,3,4,5 (eof token)
         return x
     
+    def encode_text_year_window(self,text_onehot,window):#window shift (computed as batch)
+        digits=text_onehot.argmax(dim=1)#current year
+        digits=int(digits[0]*10**3+digits[1]*10**2+digits[2]*10+digits[3]*1)
+
+        window_stack=torch.empty(0,4,10)
+        for year in range(digits-window,digits+window+1):
+
+            x = torch.tensor([year])
+            num = x.item()
+            digits = [int(d) for d in str(num)]
+            result = torch.tensor(digits)
+            window_stack=torch.cat([window_stack,F.one_hot(result,num_classes=10).unsqueeze(0)],dim=0)
+        
+        x=window_stack@self.token_embedding.weight[271:281]
+        cllct=torch.empty(0,1024)
+        for idx in range (window*2+1):
+            x_=x[idx,:,:]#one by one modify later
+            x_=torch.cat((torch.unsqueeze(self.token_embedding.weight[49406,:],0),x_,torch.unsqueeze(self.token_embedding.weight[49407,:],0),self.token_embedding.weight[0,:].repeat(71,1)))#6 + 71
+            x_=torch.unsqueeze(x_,0)
+        
+            x_ = x_ + self.positional_embedding.type(self.dtype)
+            x_ = x_.permute(1, 0, 2)  # NLD -> LND
+            x_ = self.transformer(x_)
+            x_ = x_.permute(1, 0, 2)  # LND -> NLD
+            x_ = self.ln_final(x_).type(self.dtype)
+            x_=x_[:,5,:]@self.text_projection#0,1,2,3,4,5 (eof token)
+            cllct=torch.cat([cllct,x_],dim=0)
+        return cllct
+    
     def forward(self, image, text):
         image_features = self.encode_image(image)
         text_features = self.encode_text(text)
